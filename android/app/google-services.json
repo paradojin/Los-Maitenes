@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "51432788311",
+    "project_id": "losmaitenes-24104",
+    "storage_bucket": "losmaitenes-24104.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:51432788311:android:1a92a78039cd1030ceee12",
+        "android_client_info": {
+          "package_name": "com.example.los_maitenes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDa85tdwoGRGtp5qYkvHgRIfNVbV6GvoaY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
