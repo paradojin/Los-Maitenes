@@ -35,8 +35,16 @@ flutter build apk --release
 
 ## Descargar la app (Android)
 
-La última versión está publicada en la sección **Releases** del repositorio.
-Descarga el `.apk` desde tu teléfono y habilita "instalar apps de origen desconocido".
+Escanea el código QR con tu teléfono o abre el enlace de descarga directa:
+
+<p align="center">
+  <img src="los-maitenes-v2-qr.png" width="240" alt="QR de descarga - Los Maitenes v2.0.0">
+</p>
+
+**Descarga directa:** [los-maitenes-v2.apk](https://github.com/paradojin/Los-Maitenes/releases/download/v2.0.0/los-maitenes-v2.apk)
+
+Descarga el `.apk`, ábrelo en el teléfono y habilita "instalar apps de origen desconocido".
+La última versión siempre está en la sección **[Releases](https://github.com/paradojin/Los-Maitenes/releases)**.
 
 ## Stack
 
