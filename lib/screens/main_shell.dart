@@ -19,12 +19,8 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _tabs = [
-    HomeScreen(),
-    FinanceScreen(),
-    BlacklistScreen(),
-    AccountScreen(),
-  ];
+  // Se incrementa al entrar a Finanzas para forzar su recarga (datos frescos).
+  int _financeTick = 0;
 
   void _openCreate() {
     Navigator.push(
@@ -35,10 +31,16 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = [
+      const HomeScreen(),
+      FinanceScreen(key: ValueKey('finance-$_financeTick')),
+      const BlacklistScreen(),
+      const AccountScreen(),
+    ];
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBg,
       extendBody: true,
-      body: IndexedStack(index: _index, children: _tabs),
+      body: IndexedStack(index: _index, children: tabs),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: SizedBox(
         height: 64,
@@ -70,7 +72,11 @@ class _MainShellState extends State<MainShell> {
               icon: Icons.attach_money_rounded,
               label: "Finanzas",
               selected: _index == 1,
-              onTap: () => setState(() => _index = 1),
+              // Recarga los datos cada vez que se entra a Finanzas.
+              onTap: () => setState(() {
+                _index = 1;
+                _financeTick++;
+              }),
             ),
             const SizedBox(width: 64), // hueco para el FAB
             _NavItem(

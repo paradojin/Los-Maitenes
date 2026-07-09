@@ -100,7 +100,11 @@ class _FinanceScreenState extends State<FinanceScreen> {
               ? const Center(child: CircularProgressIndicator())
               : error != null
                   ? _errorView()
-                  : ListView(
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      color: AppTheme.primaryGreen,
+                      child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
                       children: [
                         _sectionLabel("POR MÉTODO DE PAGO"),
@@ -127,6 +131,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                           ],
                         ),
                       ],
+                      ),
                     ),
         ),
       ],
