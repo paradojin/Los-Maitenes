@@ -7,9 +7,7 @@ import '../services/firestore_service.dart';
 import '../utils/money.dart';
 import '../widgets/b_ui.dart';
 
-enum HomeFilter { all, active, pending }
-
-enum StayTypeFilter { all, day, camping }
+enum HomeFilter { todos, activos, pendientes, acampada, dia }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,8 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String query = "";
-  HomeFilter filter = HomeFilter.all;
-  StayTypeFilter typeFilter = StayTypeFilter.all;
+  HomeFilter filter = HomeFilter.todos;
 
   bool _didSync = false;
   bool _syncing = false;
@@ -82,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _StatChip(value: "$personasHoy", label: "Personas hoy"),
                   const SizedBox(width: 10),
-                  _StatChip(value: "$gruposActivos", label: "Grupos activos"),
+                  _StatChip(value: "$gruposActivos", label: "En estadía"),
                   const SizedBox(width: 10),
                   _StatChip(value: "$porCobrar", label: "Por cobrar"),
                 ],
@@ -104,16 +101,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
               List<int> idx = List.generate(maps.length, (i) => i);
               idx = idx.where((i) {
-                final isPending = (maps[i]["checkInStatus"] ?? "PENDING") != "ACTIVE";
-                if (filter == HomeFilter.all) return true;
-                if (filter == HomeFilter.pending) return isPending;
-                return !isPending;
-              }).toList();
-              idx = idx.where((i) {
-                final st = (maps[i]["stayType"] ?? "DAY") as String;
-                if (typeFilter == StayTypeFilter.all) return true;
-                if (typeFilter == StayTypeFilter.day) return st == "DAY";
-                return st == "CAMPING";
+                final m = maps[i];
+                final st = (m["stayType"] ?? "DAY") as String;
+                final falta = _int(m["totalExpected"]) - _int(m["totalPaid"]);
+                switch (filter) {
+                  case HomeFilter.todos:
+                    return true;
+                  case HomeFilter.activos:
+                    return falta <= 0; // al día
+                  case HomeFilter.pendientes:
+                    return falta > 0; // debe o abono
+                  case HomeFilter.acampada:
+                    return st == "CAMPING";
+                  case HomeFilter.dia:
+                    return st == "DAY";
+                }
               }).toList();
               final q = query.trim().toLowerCase();
               if (q.isNotEmpty) {
@@ -143,23 +145,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     onChanged: (v) => setState(() => query = v),
                   ),
                   const SizedBox(height: 14),
-                  // Filtros de estado
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      _chip("Todos", filter == HomeFilter.all,
-                          () => setState(() => filter = HomeFilter.all)),
-                      _chip("Activos", filter == HomeFilter.active,
-                          () => setState(() => filter = HomeFilter.active)),
-                      _chip("Pendientes", filter == HomeFilter.pending,
-                          () => setState(() => filter = HomeFilter.pending)),
-                      _chip("Acampada", typeFilter == StayTypeFilter.camping, () {
-                        setState(() => typeFilter =
-                            typeFilter == StayTypeFilter.camping
-                                ? StayTypeFilter.all
-                                : StayTypeFilter.camping);
-                      }),
-                    ],
+                  // Filtro único (una sola opción activa a la vez)
+                  SizedBox(
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _chip("Todos", filter == HomeFilter.todos,
+                            () => setState(() => filter = HomeFilter.todos)),
+                        _chip("Activos", filter == HomeFilter.activos,
+                            () => setState(() => filter = HomeFilter.activos)),
+                        _chip("Pendientes", filter == HomeFilter.pendientes,
+                            () => setState(() => filter = HomeFilter.pendientes)),
+                        _chip("Acampada", filter == HomeFilter.acampada,
+                            () => setState(() => filter = HomeFilter.acampada)),
+                        _chip("Por el día", filter == HomeFilter.dia,
+                            () => setState(() => filter = HomeFilter.dia)),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -230,7 +233,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Expanded(
                 child: Text(
-                  name,
+                  name.isEmpty ? "Sin nombre" : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -238,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
                 state.label,
                 style: TextStyle(
@@ -252,6 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 4),
           Text(
             subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: AppTheme.darkText.withValues(alpha: 0.55),
               fontSize: 12.5,
@@ -282,6 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Text(
                   "Pagó \$${formatCLP(totalPaid)} / \$${formatCLP(totalExpected)}",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppTheme.darkText.withValues(alpha: 0.6),
                     fontSize: 12.5,
@@ -289,6 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               if (state == PayState.alDia)
                 Row(
                   children: [
@@ -324,7 +335,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AppTheme.primaryGreen : AppTheme.white,
           borderRadius: BorderRadius.circular(20),
@@ -362,18 +375,25 @@ class _StatChip extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: AppTheme.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                height: 1.0,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: AppTheme.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  height: 1.0,
+                ),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppTheme.white.withValues(alpha: 0.85),
                 fontSize: 11.5,

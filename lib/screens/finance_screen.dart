@@ -75,13 +75,18 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                "\$${formatCLP(s?.total ?? 0)}",
-                style: const TextStyle(
-                  color: AppTheme.white,
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold,
-                  height: 1.0,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "\$${formatCLP(s?.total ?? 0)}",
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: AppTheme.white,
+                    fontSize: 40,
+                    fontWeight: FontWeight.bold,
+                    height: 1.0,
+                  ),
                 ),
               ),
               const SizedBox(height: 6),
@@ -284,12 +289,17 @@ class _FinanceScreenState extends State<FinanceScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],

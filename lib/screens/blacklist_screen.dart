@@ -84,6 +84,7 @@ class _BlacklistScreenState extends State<BlacklistScreen> {
                             );
                             return;
                           }
+                          final messenger = ScaffoldMessenger.of(context);
                           setLocal(() => saving = true);
                           try {
                             final uid =
@@ -97,11 +98,9 @@ class _BlacklistScreenState extends State<BlacklistScreen> {
                             if (ctx.mounted) Navigator.pop(ctx);
                           } catch (e) {
                             setLocal(() => saving = false);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Error: $e")),
-                              );
-                            }
+                            messenger.showSnackBar(
+                              SnackBar(content: Text("Error: $e")),
+                            );
                           }
                         },
                   child: Text(saving ? "Guardando..." : "Guardar"),

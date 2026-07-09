@@ -329,13 +329,18 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            alDia ? "\$${formatCLP(totalPaid)}" : "\$${formatCLP(falta)}",
-            style: const TextStyle(
-              color: AppTheme.white,
-              fontSize: 38,
-              fontWeight: FontWeight.bold,
-              height: 1.0,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              alDia ? "\$${formatCLP(totalPaid)}" : "\$${formatCLP(falta)}",
+              maxLines: 1,
+              style: const TextStyle(
+                color: AppTheme.white,
+                fontSize: 38,
+                fontWeight: FontWeight.bold,
+                height: 1.0,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -381,6 +386,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               )),
           const SizedBox(height: 4),
           Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
         ],
       ),

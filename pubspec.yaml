@@ -1,7 +1,7 @@
 name: los_maitenes
 description: "Los Maitenes - gestión de grupos, cobros y accesos del camping."
 publish_to: 'none'
-version: 2.1.1+4
+version: 2.1.2+5
 
 environment:
   sdk: ^3.7.2

@@ -327,12 +327,19 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       )),
-                  Text(
-                    "\$${formatCLP(totalExpectedLive)}",
-                    style: const TextStyle(
-                      color: AppTheme.primaryGreen,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        "\$${formatCLP(totalExpectedLive)}",
+                        maxLines: 1,
+                        style: const TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ],

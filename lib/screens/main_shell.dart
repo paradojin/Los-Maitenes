@@ -118,18 +118,21 @@ class _NavItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: color, size: 24),
+              Icon(icon, color: color, size: 22),
               const SizedBox(height: 2),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
                 style: TextStyle(
                   color: color,
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),

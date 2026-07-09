@@ -117,7 +117,7 @@ class AppTheme {
         borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
       labelStyle: const TextStyle(color: darkText),
-      hintStyle: TextStyle(color: darkText.withOpacity(0.5)),
+      hintStyle: TextStyle(color: darkText.withValues(alpha: 0.5)),
     ),
     textTheme: const TextTheme(
       displayLarge: TextStyle(
