@@ -38,10 +38,10 @@ flutter build apk --release
 Escanea el código QR con tu teléfono o abre el enlace de descarga directa:
 
 <p align="center">
-  <img src="los-maitenes-v2-qr.png" width="240" alt="QR de descarga - Los Maitenes v2.0.0">
+  <img src="los-maitenes-v2-qr.png" width="240" alt="QR de descarga - Los Maitenes">
 </p>
 
-**Descarga directa:** [los-maitenes-v2.apk](https://github.com/paradojin/Los-Maitenes/releases/download/v2.0.0/los-maitenes-v2.apk)
+**Descarga directa (siempre la última versión):** [los-maitenes.apk](https://github.com/paradojin/Los-Maitenes/releases/latest/download/los-maitenes.apk)
 
 Descarga el `.apk`, ábrelo en el teléfono y habilita "instalar apps de origen desconocido".
 La última versión siempre está en la sección **[Releases](https://github.com/paradojin/Los-Maitenes/releases)**.

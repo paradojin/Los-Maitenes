@@ -6,6 +6,7 @@ import '../models/pricing.dart';
 import 'group_detail_screen.dart';
 import '../services/blacklist_service.dart';
 import '../services/staff_session.dart';
+import '../services/keys.dart';
 import '../utils/money.dart';
 import '../theme.dart';
 import '../widgets/b_ui.dart';
@@ -92,18 +93,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   void _recalc() {
     final p = pricing;
     if (p == null) return;
-    final days = stayType == "DAY" ? 1 : (expectedDays < 1 ? 1 : expectedDays);
-    final total = suggestedAmount(
-      now: DateTime.now(),
+    final nights = stayType == "DAY" ? 1 : (expectedDays < 1 ? 1 : expectedDays);
+    final total = expectedTotalForStay(
       stayType: stayType,
+      nights: nights,
       adults: adults,
       children: kids,
       adultDay: p.adultDay,
-      adultCamping: p.adultCamping,
       childDay: p.childDay,
+      adultCamping: p.adultCamping,
       childCamping: p.childCamping,
-      daysToPay: days,
-      expectedTotalDays: days,
     );
     setState(() => totalExpectedLive = total);
   }
@@ -116,9 +115,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   bool _validate() {
     if (_name.text.trim().isEmpty) return _setErr("Falta el nombre del responsable.");
     if (_celular.text.trim().isEmpty) return _setErr("Falta el celular del responsable.");
+    if (normalizePhoneCl(_celular.text) == null) {
+      return _setErr("Celular inválido. Ej: 9 1234 5678 (con o sin +56).");
+    }
     if (adults == 0 && kids == 0) return _setErr("Debe haber al menos 1 persona.");
     if (stayType == "CAMPING" && expectedDays < 1) {
-      return _setErr("Días de acampada debe ser 1 o más.");
+      return _setErr("Las noches de acampada deben ser 1 o más.");
     }
     _setErr("");
     return true;
@@ -168,7 +170,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       final groupId = await fs.createGroup(
         responsableNombre: _name.text.trim(),
         responsableRut: rutRaw,
-        responsableCelular: _celular.text.trim(),
+        responsableCelular: normalizePhoneCl(_celular.text) ?? _celular.text.trim(),
         ingresadoPor: StaffSession.current ?? '',
         patente: plateRaw,
         adultos: adults,
@@ -269,7 +271,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 }),
                 if (stayType == "CAMPING") ...[
                   const SizedBox(height: 10),
-                  _stepper("Días (estimado)", expectedDays, (v) {
+                  _stepper("Noches (estimado)", expectedDays, (v) {
                     setState(() => expectedDays = v < 1 ? 1 : v);
                     _recalc();
                   }),

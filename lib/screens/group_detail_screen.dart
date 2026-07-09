@@ -3,11 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/firestore_service.dart';
-import '../services/pricing_service.dart';
 import '../services/billing.dart';
-import '../models/pricing.dart';
 import '../utils/money.dart';
 import '../services/blacklist_service.dart';
+import '../services/keys.dart';
 import '../theme.dart';
 import '../widgets/b_ui.dart';
 
@@ -22,18 +21,8 @@ class GroupDetailScreen extends StatefulWidget {
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   final fs = FirestoreService();
   String method = "EFECTIVO";
-  int campingDaysToPay = 1;
   final _amountCtrl = TextEditingController(text: "0");
   bool loading = false;
-  Pricing? pricing;
-
-  @override
-  void initState() {
-    super.initState();
-    PricingService().getPricing().then((p) {
-      if (mounted) setState(() => pricing = p);
-    });
-  }
 
   @override
   void dispose() {
@@ -52,31 +41,88 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     return c.isEmpty ? 0 : int.parse(c);
   }
 
-  Future<void> _calcSuggested(Map<String, dynamic> g) async {
-    final p = pricing ?? await PricingService().getPricing();
-    if (mounted) setState(() => pricing = p);
-    final stayType = (g["stayType"] ?? "DAY") as String;
-    final expectedDays = _int(g["expectedDays"], 1);
-    final personas = (g["personas"] ?? {}) as Map<String, dynamic>;
-    final adults = _int(personas["adultos"]);
-    final kids = _int(personas["ninos"]);
-    final daysToPay = stayType == "DAY" ? 1 : campingDaysToPay;
-    final suggested = suggestedAmount(
-      now: DateTime.now(),
-      stayType: stayType,
-      adults: adults,
-      children: kids,
-      adultDay: p.adultDay,
-      adultCamping: p.adultCamping,
-      childDay: p.childDay,
-      childCamping: p.childCamping,
-      daysToPay: daysToPay,
-      expectedTotalDays: expectedDays,
+  /// Sugerido = lo que falta para cubrir el total planificado de la estadía.
+  void _calcSuggested(Map<String, dynamic> g) {
+    final remaining = _int(g["totalExpected"]) - _int(g["totalPaid"]);
+    _amountCtrl.text = formatCLP(remaining > 0 ? remaining : 0);
+    setState(() {});
+  }
+
+  Future<void> _editPeople(int adults, int kids) async {
+    int a = adults, k = kids;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          Widget stp(String label, int value, ValueChanged<int> onCh) => Row(
+                children: [
+                  Expanded(child: Text(label)),
+                  IconButton(
+                    onPressed: value <= 0 ? null : () => setLocal(() => onCh(value - 1)),
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                  Text("$value", style: Theme.of(ctx).textTheme.titleLarge),
+                  IconButton(
+                    onPressed: () => setLocal(() => onCh(value + 1)),
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                ],
+              );
+          return AlertDialog(
+            title: const Text("Editar personas"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                stp("Adultos", a, (v) => a = v),
+                stp("Niños", k, (v) => k = v),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+              ElevatedButton(
+                  onPressed: (a == 0 && k == 0) ? null : () => Navigator.pop(ctx, true),
+                  child: const Text("Guardar")),
+            ],
+          );
+        },
+      ),
     );
-    if (mounted) {
-      _amountCtrl.text = formatCLP(suggested);
-      setState(() {});
+    if (ok != true) return;
+    try {
+      await fs.updateGroupPeople(groupId: widget.groupId, adultos: a, ninos: k);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Personas actualizadas")));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     }
+  }
+
+  Widget _alertBanner(String text) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.statusDebt.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.statusDebt),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: AppTheme.statusDebt, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    color: AppTheme.statusDebt, fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _registerPayment() async {
@@ -185,7 +231,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           int rate(String k, int d) => _int(rates[k], d);
           final arrivalAt = (g["arrivalAt"] as Timestamp?)?.toDate();
           final now = DateTime.now();
-          final requiredNow = checkoutRequired(
+          final requiredNow = amountIncurredNow(
             stayType: stayType,
             arrival: arrivalAt ?? now,
             now: now,
@@ -195,9 +241,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             childDay: rate("childDay", 5000),
             adultCamping: rate("adultCamping", 8000),
             childCamping: rate("childCamping", 6000),
+            extraCharges: _int(g["extraCharges"]),
           );
           final faltaCheckout = requiredNow - totalPaid;
           final canCheckout = faltaCheckout <= 0;
+          final overdueDayPass = isIn && dayPassOverdue(stayType, now);
 
           final subtitle =
               "${plate.isEmpty ? 'Sin patente' : plate} · $typeLabel";
@@ -209,19 +257,33 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
                   children: [
+                    if (overdueDayPass) ...[
+                      _alertBanner(
+                          "Pase de día pasado de las 21:00 — retíralo o pásalo a acampada."),
+                      const SizedBox(height: 14),
+                    ],
                     Row(
                       children: [
                         Expanded(
                             child: _infoBox("PERSONAS", "$adults ad · $kids niño")),
                         const SizedBox(width: 10),
-                        Expanded(child: _infoBox("CELULAR", celular.isEmpty ? "—" : celular)),
+                        Expanded(
+                            child: _infoBox(
+                                "CELULAR",
+                                celular.isEmpty ? "—" : formatPhoneCl(celular))),
                         const SizedBox(width: 10),
                         Expanded(
                             child: _infoBox("INGRESÓ", ingresadoPor.isEmpty ? "—" : ingresadoPor)),
                       ],
                     ),
                     if (isIn) ...[
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.group, size: 18),
+                        label: const Text("Editar personas"),
+                        onPressed: () => _editPeople(adults, kids),
+                      ),
+                      const SizedBox(height: 12),
                       _convertExtendButton(stayType),
                       const SizedBox(height: 20),
                       _label("REGISTRAR PAGO"),
@@ -340,7 +402,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("¿Cuántos días planea quedarse (estimado)?"),
+                    const Text("¿Cuántas noches planea quedarse (estimado)?"),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -382,12 +444,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     }
     return OutlinedButton.icon(
       icon: const Icon(Icons.add),
-      label: const Text("Agregar 1 día (estimado)"),
+      label: const Text("Agregar 1 noche (estimado)"),
       onPressed: () async {
         await fs.extendCampingDays(groupId: widget.groupId, addDays: 1);
         if (mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text("Día agregado al estimado")));
+              .showSnackBar(const SnackBar(content: Text("Noche agregada al estimado")));
         }
       },
     );
@@ -411,28 +473,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _methodSelector(),
-          if (stayType == "CAMPING") ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const Text("Días a pagar",
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                const Spacer(),
-                IconButton(
-                  onPressed: campingDaysToPay <= 1
-                      ? null
-                      : () => setState(() => campingDaysToPay--),
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-                Text("$campingDaysToPay",
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton(
-                  onPressed: () => setState(() => campingDaysToPay++),
-                  icon: const Icon(Icons.add_circle_outline),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 14),
           TextField(
             controller: _amountCtrl,

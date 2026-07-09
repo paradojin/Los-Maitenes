@@ -209,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final falta = totalExpected - totalPaid;
 
     final state = payStateFrom(totalExpected: totalExpected, totalPaid: totalPaid);
+    final overdueDayPass = stayType == "DAY" && DateTime.now().hour >= 21;
 
     final subtitle = [
       if (plate.isNotEmpty) plate else "Sin patente",
@@ -256,6 +257,24 @@ class _HomeScreenState extends State<HomeScreen> {
               fontSize: 12.5,
             ),
           ),
+          if (overdueDayPass) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 15, color: AppTheme.statusDebt),
+                const SizedBox(width: 4),
+                Text(
+                  "Pase de día pasado de las 21:00",
+                  style: TextStyle(
+                    color: AppTheme.statusDebt,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
