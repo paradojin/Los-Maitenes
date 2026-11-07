@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/firestore_service.dart';
 import '../services/billing.dart';
+import '../services/group_billing.dart';
+import '../services/staff_session.dart';
 import '../utils/money.dart';
 import '../services/blacklist_service.dart';
 import '../services/keys.dart';
@@ -69,10 +71,16 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 ],
               );
           return AlertDialog(
-            title: const Text("Editar personas"),
+            title: const Text("Corregir personas"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Text(
+                  "Solo para corregir un error del registro inicial. "
+                  "Si llegaron más personas usa \"Sumar personas\".",
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 8),
                 stp("Adultos", a, (v) => a = v),
                 stp("Niños", k, (v) => k = v),
               ],
@@ -101,6 +109,166 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             .showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     }
+  }
+
+  Future<void> _addSubgroup() async {
+    int a = 1, k = 0, nights = 1;
+    String type = "DAY";
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          Widget stp(String label, int value, int min, ValueChanged<int> onCh) => Row(
+                children: [
+                  Expanded(child: Text(label)),
+                  IconButton(
+                    onPressed: value <= min ? null : () => setLocal(() => onCh(value - 1)),
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                  Text("$value", style: Theme.of(ctx).textTheme.titleLarge),
+                  IconButton(
+                    onPressed: () => setLocal(() => onCh(value + 1)),
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                ],
+              );
+          return AlertDialog(
+            title: const Text("Sumar personas"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Se cobran desde ahora, no desde la llegada del grupo.",
+                    style: TextStyle(fontSize: 12.5)),
+                const SizedBox(height: 8),
+                stp("Adultos", a, 0, (v) => a = v),
+                stp("Niños", k, 0, (v) => k = v),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: "DAY", label: Text("Por el día")),
+                    ButtonSegment(value: "CAMPING", label: Text("Acampada")),
+                  ],
+                  selected: {type},
+                  onSelectionChanged: (v) => setLocal(() => type = v.first),
+                ),
+                if (type == "CAMPING")
+                  stp("Noches (estimado)", nights, 1, (v) => nights = v),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+              ElevatedButton(
+                  onPressed: (a == 0 && k == 0) ? null : () => Navigator.pop(ctx, true),
+                  child: const Text("Sumar")),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await fs.addSubgroup(
+        groupId: widget.groupId,
+        adultos: a,
+        ninos: k,
+        stayType: type,
+        expectedDays: nights,
+        ingresadoPor: StaffSession.current ?? '',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Personas sumadas al grupo")));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
+
+  Future<void> _checkoutSubgroup(String subgroupId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Retirar subgrupo"),
+        content: const Text(
+            "Deja de cobrarse desde ahora. Lo que usó queda en la cuenta del grupo."),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true), child: const Text("Retirar")),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await fs.checkoutSubgroup(groupId: widget.groupId, subgroupId: subgroupId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
+
+  String _when(dynamic ts) {
+    if (ts is! Timestamp) return "—";
+    final d = ts.toDate();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return "${two(d.day)}/${two(d.month)} ${two(d.hour)}:${two(d.minute)}";
+  }
+
+  Widget _partyTile({required String title, required String subtitle, Widget? trailing}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderGray),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: TextStyle(
+                        fontSize: 12, color: AppTheme.darkText.withValues(alpha: 0.6))),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _mainPartyTile(int adults, int kids, String typeLabel, dynamic arrivalAt) =>
+      _partyTile(
+        title: "Registro inicial · $adults ad · $kids niño",
+        subtitle: "$typeLabel · llegó ${_when(arrivalAt)}",
+      );
+
+  Widget _subgroupTile(Map<String, dynamic> sg, bool groupIn) {
+    final active = subgroupActive(sg);
+    final type = sg["stayType"] == "CAMPING" ? "Acampada" : "Por el día";
+    final left = active ? "" : " · salió ${_when(sg["checkoutAt"])}";
+    return _partyTile(
+      title: "Se sumaron · ${_int(sg["adultos"])} ad · ${_int(sg["ninos"])} niño",
+      subtitle: "$type · llegó ${_when(sg["arrivalAt"])}$left",
+      trailing: active && groupIn
+          ? TextButton(
+              onPressed: () => _checkoutSubgroup(sg["id"] as String),
+              child: const Text("Retirar"))
+          : null,
+    );
   }
 
   Widget _alertBanner(String text) {
@@ -227,22 +395,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
 
           final state = payStateFrom(totalExpected: totalExpected, totalPaid: totalPaid);
 
-          final rates = (g["ratesSnapshot"] ?? {}) as Map<String, dynamic>;
-          int rate(String k, int d) => _int(rates[k], d);
-          final arrivalAt = (g["arrivalAt"] as Timestamp?)?.toDate();
           final now = DateTime.now();
-          final requiredNow = amountIncurredNow(
-            stayType: stayType,
-            arrival: arrivalAt ?? now,
-            now: now,
-            adults: adults,
-            children: kids,
-            adultDay: rate("adultDay", 7000),
-            childDay: rate("childDay", 5000),
-            adultCamping: rate("adultCamping", 8000),
-            childCamping: rate("childCamping", 6000),
-            extraCharges: _int(g["extraCharges"]),
-          );
+          final requiredNow = groupIncurred(g, now);
+          final subgroups = subgroupsOf(g);
+          final peopleTotal = peopleNow(g);
           final faltaCheckout = requiredNow - totalPaid;
           final canCheckout = faltaCheckout <= 0;
           final overdueDayPass = isIn && dayPassOverdue(stayType, now);
@@ -265,7 +421,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     Row(
                       children: [
                         Expanded(
-                            child: _infoBox("PERSONAS", "$adults ad · $kids niño")),
+                            child: _infoBox("PERSONAS",
+                                subgroups.isEmpty ? "$adults ad · $kids niño" : "$peopleTotal en total")),
                         const SizedBox(width: 10),
                         Expanded(
                             child: _infoBox(
@@ -276,11 +433,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                             child: _infoBox("INGRESÓ", ingresadoPor.isEmpty ? "—" : ingresadoPor)),
                       ],
                     ),
+                    if (subgroups.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _label("PERSONAS DEL GRUPO"),
+                      const SizedBox(height: 10),
+                      _mainPartyTile(adults, kids, typeLabel, g["arrivalAt"]),
+                      for (final sg in subgroups) _subgroupTile(sg, isIn),
+                    ],
                     if (isIn) ...[
                       const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.group_add, size: 18),
+                        label: const Text("Sumar personas"),
+                        onPressed: _addSubgroup,
+                      ),
+                      const SizedBox(height: 8),
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.group, size: 18),
-                        label: const Text("Editar personas"),
+                        icon: const Icon(Icons.edit, size: 18),
+                        label: const Text("Corregir personas del registro"),
                         onPressed: () => _editPeople(adults, kids),
                       ),
                       const SizedBox(height: 12),

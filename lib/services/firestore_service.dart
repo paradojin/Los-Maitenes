@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/pricing.dart';
 import 'billing.dart';
+import 'group_billing.dart';
 import 'keys.dart';
 
 class FirestoreService {
@@ -9,61 +10,14 @@ class FirestoreService {
 
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
 
-  int _pickInt(Map<String, dynamic> m, List<String> keys, int fallback) {
-    for (final k in keys) {
-      final v = m[k];
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      if (v is String) {
-        final p = int.tryParse(v);
-        if (p != null) return p;
-      }
-    }
-    return fallback;
-  }
+  int _pickInt(Map<String, dynamic> m, List<String> keys, int fallback) =>
+      pickInt(m, keys, fallback);
 
-  // --- Helpers de cobro sobre el documento del grupo -----------------------
+  // --- Helpers de cobro sobre el documento del grupo (ver group_billing) ---
 
-  DateTime _arrivalOf(Map<String, dynamic> m, DateTime fallback) {
-    final ar = m["arrivalAt"];
-    if (ar is Timestamp) return ar.toDate();
-    return fallback;
-  }
+  int _incurred(Map<String, dynamic> m, DateTime now) => groupIncurred(m, now);
 
-  /// Monto incurrido hasta [now] según el estado actual del grupo.
-  int _incurred(Map<String, dynamic> m, DateTime now) {
-    final personas = (m['personas'] ?? {}) as Map<String, dynamic>;
-    final rates = (m['ratesSnapshot'] ?? {}) as Map<String, dynamic>;
-    return amountIncurredNow(
-      stayType: (m['stayType'] ?? 'DAY') as String,
-      arrival: _arrivalOf(m, now),
-      now: now,
-      adults: _pickInt(personas, ["adultos", "adults"], 0),
-      children: _pickInt(personas, ["ninos", "kids", "children"], 0),
-      adultDay: _pickInt(rates, ["adultDay", "adult_day"], 7000),
-      childDay: _pickInt(rates, ["childDay", "child_day"], 5000),
-      adultCamping: _pickInt(rates, ["adultCamping", "adult_camping"], 8000),
-      childCamping: _pickInt(rates, ["childCamping", "child_camping"], 6000),
-      extraCharges: _pickInt(m, ["extraCharges"], 0),
-    );
-  }
-
-  /// Total planificado según el estado actual del grupo.
-  int _expectedTotal(Map<String, dynamic> m, {String? stayType, int? nights}) {
-    final personas = (m['personas'] ?? {}) as Map<String, dynamic>;
-    final rates = (m['ratesSnapshot'] ?? {}) as Map<String, dynamic>;
-    return expectedTotalForStay(
-      stayType: stayType ?? (m['stayType'] ?? 'DAY') as String,
-      nights: nights ?? _pickInt(m, ["expectedDays"], 1),
-      adults: _pickInt(personas, ["adultos", "adults"], 0),
-      children: _pickInt(personas, ["ninos", "kids", "children"], 0),
-      adultDay: _pickInt(rates, ["adultDay", "adult_day"], 7000),
-      childDay: _pickInt(rates, ["childDay", "child_day"], 5000),
-      adultCamping: _pickInt(rates, ["adultCamping", "adult_camping"], 8000),
-      childCamping: _pickInt(rates, ["childCamping", "child_camping"], 6000),
-      extraCharges: _pickInt(m, ["extraCharges"], 0),
-    );
-  }
+  int _expectedTotal(Map<String, dynamic> m) => groupExpected(m, DateTime.now());
 
   String _statusFor(Map<String, dynamic> m, DateTime now, int totalPaid) =>
       totalPaid >= _incurred(m, now) ? "ACTIVE" : "PENDING";
@@ -330,6 +284,79 @@ class FirestoreService {
     });
   }
 
+  /// Sumar personas a un grupo en estadía como subgrupo: se cobran desde
+  /// ahora, no desde la llegada del grupo.
+  Future<void> addSubgroup({
+    required String groupId,
+    required int adultos,
+    required int ninos,
+    required String stayType, // "DAY" | "CAMPING"
+    required int expectedDays, // noches (1 para DAY)
+    required String ingresadoPor,
+  }) async {
+    final groupRef = _db.collection('groups').doc(groupId);
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(groupRef);
+      if (!snap.exists) throw Exception("Grupo no existe");
+      final m = snap.data() as Map<String, dynamic>;
+      if ((m["status"] ?? "IN") != "IN") {
+        throw Exception("Grupo no está en estadía");
+      }
+      final now = DateTime.now();
+      final subs = subgroupsOf(m)
+        ..add({
+          "id": now.microsecondsSinceEpoch.toString(),
+          "adultos": adultos,
+          "ninos": ninos,
+          "stayType": stayType,
+          "expectedDays": stayType == "DAY" ? 1 : (expectedDays < 1 ? 1 : expectedDays),
+          // serverTimestamp no se permite dentro de listas.
+          "arrivalAt": Timestamp.fromDate(now),
+          "checkoutAt": null,
+          "ingresadoPor": ingresadoPor,
+        });
+      final updated = Map<String, dynamic>.from(m)..["subgroups"] = subs;
+
+      final totalPaid = _pickInt(m, ["totalPaid"], 0);
+      tx.update(groupRef, {
+        "subgroups": subs,
+        "totalExpected": _expectedTotal(updated),
+        "checkInStatus": _statusFor(updated, now, totalPaid),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  /// Retirar solo un subgrupo. La cuenta es común: no exige pago aquí, lo
+  /// usado queda sumado al total del grupo.
+  Future<void> checkoutSubgroup({
+    required String groupId,
+    required String subgroupId,
+  }) async {
+    final groupRef = _db.collection('groups').doc(groupId);
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(groupRef);
+      if (!snap.exists) throw Exception("Grupo no existe");
+      final m = snap.data() as Map<String, dynamic>;
+      final now = DateTime.now();
+      final subs = subgroupsOf(m);
+      for (final s in subs) {
+        if (s["id"] == subgroupId && subgroupActive(s)) {
+          s["checkoutAt"] = Timestamp.fromDate(now);
+        }
+      }
+      final updated = Map<String, dynamic>.from(m)..["subgroups"] = subs;
+
+      final totalPaid = _pickInt(m, ["totalPaid"], 0);
+      tx.update(groupRef, {
+        "subgroups": subs,
+        "totalExpected": _expectedTotal(updated),
+        "checkInStatus": _statusFor(updated, now, totalPaid),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Future<void> checkoutGroup(String groupId) async {
     final groupRef = _db.collection('groups').doc(groupId);
     final eventRef = _db.collection('access_events').doc();
@@ -350,9 +377,16 @@ class FirestoreService {
             "Pago insuficiente para retirar (requiere \$$required, pagado \$$totalPaid).");
       }
 
+      // Los subgrupos aún presentes salen junto al grupo.
+      final subs = subgroupsOf(data);
+      for (final s in subs) {
+        if (subgroupActive(s)) s["checkoutAt"] = Timestamp.fromDate(now);
+      }
+
       tx.update(groupRef, {
         "status": "OUT",
         "checkoutAt": FieldValue.serverTimestamp(),
+        if (subs.isNotEmpty) "subgroups": subs,
         "updatedAt": FieldValue.serverTimestamp(),
       });
 

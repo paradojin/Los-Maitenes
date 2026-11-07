@@ -1,3 +1,4 @@
+import '../services/group_billing.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -66,8 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
             int personasHoy = 0;
             int porCobrar = 0;
             for (final m in maps) {
-              final personas = (m["personas"] ?? {}) as Map<String, dynamic>;
-              personasHoy += _int(personas["adultos"]) + _int(personas["ninos"]);
+              personasHoy += peopleNow(m);
               final falta = _int(m["totalExpected"]) - _int(m["totalPaid"]);
               if (falta > 0) porCobrar++;
             }
@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final subtitle = [
       if (plate.isNotEmpty) plate else "Sin patente",
-      "$adults adultos $kids niños",
+      subgroupsOf(m).isEmpty ? "$adults adultos $kids niños" : "${peopleNow(m)} personas",
       typeLabel,
     ].join(" · ");
 
