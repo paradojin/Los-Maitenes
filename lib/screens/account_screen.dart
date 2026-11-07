@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/staff_session.dart';
+import 'prices_screen.dart';
 import '../theme.dart';
 import '../widgets/b_ui.dart';
 
@@ -72,6 +73,17 @@ class AccountScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.sell_outlined),
+                  label: const Text("Precios"),
+                  onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const PricesScreen())),
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 52,

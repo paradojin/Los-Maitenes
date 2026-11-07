@@ -115,6 +115,17 @@ class _FinanceScreenState extends State<FinanceScreen> {
                         _sectionLabel("POR MÉTODO DE PAGO"),
                         const SizedBox(height: 10),
                         _methodsCard(s!),
+                        if (s.voidedCount > 0) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            "${s.voidedCount} pago(s) anulado(s) por "
+                            "\$${formatCLP(s.voidedTotal)} · no suman al total",
+                            style: TextStyle(
+                              color: AppTheme.darkText.withValues(alpha: 0.6),
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         Row(
                           children: [

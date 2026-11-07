@@ -4,10 +4,14 @@ class FinanceSummary {
   final int total;
   final int count; // cantidad de pagos
   final Map<String, int> byMethod; // EFECTIVO/TRANSFERENCIA/TARJETA
+  final int voidedTotal; // pagos anulados (no cuentan en total)
+  final int voidedCount;
   FinanceSummary({
     required this.total,
     required this.count,
     required this.byMethod,
+    this.voidedTotal = 0,
+    this.voidedCount = 0,
   });
 
   int get ticketPromedio => count > 0 ? (total ~/ count) : 0;
@@ -48,6 +52,8 @@ class FinanceService {
 
     int total = 0;
     int count = 0;
+    int voidedTotal = 0;
+    int voidedCount = 0;
     final byMethod = <String, int>{
       "EFECTIVO": 0,
       "TRANSFERENCIA": 0,
@@ -60,12 +66,23 @@ class FinanceService {
       final amount = rawAmount is int ? rawAmount : (rawAmount as num).toInt();
       final method = (m["method"] ?? "EFECTIVO") as String;
 
+      if (m["voided"] == true) {
+        voidedTotal += amount;
+        voidedCount++;
+        continue;
+      }
       total += amount;
       count++;
       byMethod[method] = (byMethod[method] ?? 0) + amount;
     }
 
-    return FinanceSummary(total: total, count: count, byMethod: byMethod);
+    return FinanceSummary(
+      total: total,
+      count: count,
+      byMethod: byMethod,
+      voidedTotal: voidedTotal,
+      voidedCount: voidedCount,
+    );
   }
 
   /// Estado de cobro de los grupos actualmente en estadía.

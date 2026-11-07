@@ -271,6 +271,115 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     );
   }
 
+  static const _methodLabel = {
+    "EFECTIVO": "Efectivo",
+    "TRANSFERENCIA": "Transferencia",
+    "TARJETA": "Tarjeta",
+  };
+
+  Widget _paymentsList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("payments")
+          .where("groupId", isEqualTo: widget.groupId)
+          .snapshots(),
+      builder: (_, snap) {
+        final docs = [...?snap.data?.docs];
+        if (docs.isEmpty) return const SizedBox.shrink();
+        // Orden en el cliente: evita exigir un índice compuesto en Firestore.
+        DateTime at(QueryDocumentSnapshot d) =>
+            ((d.data() as Map<String, dynamic>)["createdAt"] as Timestamp?)?.toDate() ??
+            DateTime.now();
+        docs.sort((a, b) => at(b).compareTo(at(a)));
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 20),
+            _label("PAGOS"),
+            const SizedBox(height: 10),
+            for (final d in docs) _paymentTile(d.id, d.data() as Map<String, dynamic>),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _paymentTile(String id, Map<String, dynamic> p) {
+    final voided = p["voided"] == true;
+    final method = _methodLabel[p["method"]] ?? (p["method"] ?? "") as String;
+    final who = (p["registradoPor"] ?? "") as String;
+    final amount = "\$${formatCLP(_int(p["amount"]))}";
+    return _partyTile(
+      title: voided ? "$amount · $method · ANULADO" : "$amount · $method",
+      subtitle: voided
+          ? "Anuló ${p["voidedBy"] ?? "—"} el ${_when(p["voidedAt"])}: ${p["voidReason"] ?? ""}"
+          : "${_when(p["createdAt"])}${who.isEmpty ? "" : " · $who"}",
+      trailing: voided
+          ? null
+          : TextButton(
+              onPressed: () => _voidPayment(id, amount, method),
+              child: const Text("Anular", style: TextStyle(color: AppTheme.statusDebt)),
+            ),
+    );
+  }
+
+  Future<void> _voidPayment(String paymentId, String amount, String method) async {
+    final reasonCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text("Anular pago"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("$amount · $method\n\n"
+                  "Deja de contar en el grupo y en Finanzas. Queda registrado "
+                  "quién lo anuló y por qué. Si corresponde, registra luego el pago correcto."),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonCtrl,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 3,
+                onChanged: (_) => setLocal(() {}),
+                decoration: const InputDecoration(
+                  labelText: "Motivo (obligatorio)",
+                  hintText: "Ej: era transferencia, no efectivo",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+            ElevatedButton(
+                onPressed: reasonCtrl.text.trim().isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: const Text("Anular")),
+          ],
+        ),
+      ),
+    );
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    if (ok != true) return;
+    try {
+      await fs.voidPayment(paymentId: paymentId, reason: reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Pago anulado")));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
+
   Widget _alertBanner(String text) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -460,6 +569,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       const SizedBox(height: 10),
                       _paymentCard(g, stayType),
                     ],
+                    _paymentsList(),
                     const SizedBox(height: 20),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.block),

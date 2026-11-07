@@ -19,4 +19,13 @@ class PricingService {
     }
     return Pricing.fromMap(doc.data()!);
   }
+
+  /// Los grupos guardan una copia de las tarifas al ingresar (ratesSnapshot),
+  /// así que el cambio solo aplica a grupos nuevos.
+  Future<void> savePricing(Pricing p, String updatedBy) =>
+      _db.collection('settings').doc('pricing').set({
+        ...p.toMap(),
+        'updatedBy': updatedBy,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 }

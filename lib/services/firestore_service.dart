@@ -4,6 +4,7 @@ import '../models/pricing.dart';
 import 'billing.dart';
 import 'group_billing.dart';
 import 'keys.dart';
+import 'staff_session.dart';
 
 class FirestoreService {
   final _db = FirebaseFirestore.instance;
@@ -147,6 +148,43 @@ class FirestoreService {
         "stayType": (m['stayType'] ?? 'DAY') as String,
         "createdAt": FieldValue.serverTimestamp(),
         "createdByUid": _uid,
+        "registradoPor": StaffSession.current ?? "",
+      });
+    });
+  }
+
+  /// Anular un pago mal registrado. No se borra: queda marcado con quién,
+  /// cuándo y por qué, y deja de contar en el grupo y en Finanzas.
+  Future<void> voidPayment({
+    required String paymentId,
+    required String reason,
+  }) async {
+    final paymentRef = _db.collection('payments').doc(paymentId);
+    await _db.runTransaction((tx) async {
+      final pSnap = await tx.get(paymentRef);
+      if (!pSnap.exists) throw Exception("Pago no existe");
+      final p = pSnap.data() as Map<String, dynamic>;
+      if (p["voided"] == true) throw Exception("El pago ya está anulado");
+
+      final groupRef = _db.collection('groups').doc(p["groupId"] as String);
+      final gSnap = await tx.get(groupRef);
+      if (!gSnap.exists) throw Exception("Grupo no existe");
+      final m = gSnap.data() as Map<String, dynamic>;
+
+      final now = DateTime.now();
+      final amount = _pickInt(p, ["amount"], 0);
+      final newTotalPaid = _pickInt(m, ["totalPaid"], 0) - amount;
+
+      tx.update(paymentRef, {
+        "voided": true,
+        "voidReason": reason,
+        "voidedBy": StaffSession.current ?? "",
+        "voidedAt": FieldValue.serverTimestamp(),
+      });
+      tx.update(groupRef, {
+        "totalPaid": newTotalPaid,
+        "checkInStatus": _statusFor(m, now, newTotalPaid),
+        "updatedAt": FieldValue.serverTimestamp(),
       });
     });
   }
